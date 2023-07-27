@@ -8,6 +8,7 @@ import (
 
 	"github.com/tmc/langchaingo/chains"
 	"github.com/tmc/langchaingo/llms"
+	"github.com/tmc/langchaingo/logger"
 	"github.com/tmc/langchaingo/schema"
 	"github.com/tmc/langchaingo/tools"
 )
@@ -31,6 +32,8 @@ type ConversationalAgent struct {
 	Tools []tools.Tool
 	// Output key is the key where the final output is placed.
 	OutputKey string
+	// Logger is the logger used to log the agent's thoughts.
+	Logger logger.AgentLogger
 }
 
 var _ Agent = (*ConversationalAgent)(nil)
@@ -45,6 +48,7 @@ func NewConversationalAgent(llm llms.LanguageModel, tools []tools.Tool, opts ...
 		Chain:     chains.NewLLMChain(llm, options.getConversationalPrompt(tools)),
 		Tools:     tools,
 		OutputKey: options.outputKey,
+		Logger:    options.Logger,
 	}
 }
 

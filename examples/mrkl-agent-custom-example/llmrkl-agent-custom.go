@@ -38,7 +38,7 @@ func run() error {
 	executor, err := agents.Initialize(
 		llm,
 		[]tools.Tool{stableDiffusionTool},
-		agents.ConversationalReactDescription,
+		agents.ZeroShotReactDescription,
 		agents.WithMaxIterations(3),
 	)
 

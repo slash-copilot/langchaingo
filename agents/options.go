@@ -1,6 +1,7 @@
 package agents
 
 import (
+	"github.com/tmc/langchaingo/logger"
 	"github.com/tmc/langchaingo/memory"
 	"github.com/tmc/langchaingo/prompts"
 	"github.com/tmc/langchaingo/schema"
@@ -16,6 +17,7 @@ type CreationOptions struct {
 	promptPrefix            string
 	formatInstructions      string
 	promptSuffix            string
+	Logger                  logger.AgentLogger
 }
 
 // CreationOption is a function type that can be used to modify the creation of the agents
@@ -27,6 +29,7 @@ func executorDefaultOptions() CreationOptions {
 		maxIterations: _defaultMaxIterations,
 		outputKey:     _defaultOutputKey,
 		memory:        memory.NewSimple(),
+		Logger:        logger.GetAgentLogger(),
 	}
 }
 
@@ -36,6 +39,7 @@ func mrklDefaultOptions() CreationOptions {
 		formatInstructions: _defaultMrklFormatInstructions,
 		promptSuffix:       _defaultMrklSuffix,
 		outputKey:          _defaultOutputKey,
+		Logger:             logger.GetAgentLogger(),
 	}
 }
 
@@ -45,6 +49,7 @@ func conversationalDefaultOptions() CreationOptions {
 		formatInstructions: _defaultConversationalFormatInstructions,
 		promptSuffix:       _defaultConversationalSuffix,
 		outputKey:          _defaultOutputKey,
+		Logger:             logger.GetAgentLogger(),
 	}
 }
 
@@ -129,5 +134,11 @@ func WithReturnIntermediateSteps() CreationOption {
 func WithMemory(m schema.Memory) CreationOption {
 	return func(co *CreationOptions) {
 		co.memory = m
+	}
+}
+
+func WithLogger(l logger.AgentLogger) CreationOption {
+	return func(co *CreationOptions) {
+		co.Logger = l
 	}
 }

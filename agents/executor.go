@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/tmc/langchaingo/chains"
+	"github.com/tmc/langchaingo/logger"
 	"github.com/tmc/langchaingo/schema"
 	"github.com/tmc/langchaingo/tools"
 )
@@ -20,6 +21,7 @@ type Executor struct {
 
 	MaxIterations           int
 	ReturnIntermediateSteps bool
+	Logger                  logger.AgentLogger
 }
 
 var _ chains.Chain = Executor{}
@@ -37,6 +39,7 @@ func NewExecutor(agent Agent, tools []tools.Tool, opts ...CreationOption) Execut
 		Memory:                  options.memory,
 		MaxIterations:           options.maxIterations,
 		ReturnIntermediateSteps: options.returnIntermediateSteps,
+		Logger:                  options.Logger,
 	}
 }
 
@@ -71,6 +74,8 @@ func (e Executor) Call(ctx context.Context, inputValues map[string]any, _ ...cha
 				})
 				continue
 			}
+
+			e.Logger.AgentThought(action.Log)
 
 			observation, err := tool.Call(ctx, action.ToolInput)
 			if err != nil {

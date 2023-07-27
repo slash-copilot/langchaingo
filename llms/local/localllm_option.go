@@ -1,5 +1,7 @@
 package local
 
+import "github.com/tmc/langchaingo/logger"
+
 const (
 	// The name of the environment variable that contains the path to the local LLM binary.
 	localLLMBinVarName = "LOCAL_LLM_BIN"
@@ -10,7 +12,8 @@ const (
 type options struct {
 	bin          string
 	args         string
-	globalAsArgs bool // build key-value arguments from global llms.Options
+	globalAsArgs bool             // build key-value arguments from global llms.Options
+	logger       logger.LLMLogger // logger to use
 }
 
 type Option func(*options)
@@ -36,5 +39,12 @@ func WithArgs(args string) Option {
 func WithGlobalAsArgs() Option {
 	return func(opts *options) {
 		opts.globalAsArgs = true
+	}
+}
+
+// WithLogger passes the logger to the client.
+func WithLogger(logger logger.LLMLogger) Option {
+	return func(opts *options) {
+		opts.logger = logger
 	}
 }

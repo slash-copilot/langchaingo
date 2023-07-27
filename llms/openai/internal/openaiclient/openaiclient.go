@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/tmc/langchaingo/logger"
 )
 
 const (
@@ -35,6 +37,7 @@ type Client struct {
 	apiVersion string // required when APIType is APITypeAzure or APITypeAzureAD
 
 	httpClient Doer
+	Logger     logger.LLMLogger
 }
 
 // Option is an option for the OpenAI client.
@@ -67,6 +70,7 @@ func New(token string, model string, baseURL string, organization string,
 		apiType:      apiType,
 		apiVersion:   apiVersion,
 		httpClient:   http.DefaultClient,
+		Logger:       logger.GetLLMLogger(),
 	}
 
 	for _, opt := range opts {

@@ -1,5 +1,7 @@
 package openai
 
+import "github.com/tmc/langchaingo/logger"
+
 const (
 	tokenEnvVarName        = "OPENAI_API_KEY"      //nolint:gosec
 	modelEnvVarName        = "OPENAI_MODEL"        //nolint:gosec
@@ -27,6 +29,8 @@ type options struct {
 
 	apiType    APIType
 	apiVersion string // required when APIType is APITypeAzure or APITypeAzureAD
+
+	logger logger.LLMLogger // optional
 }
 
 type Option func(*options)
@@ -77,5 +81,13 @@ func WithAPIType(apiType APIType) Option {
 func WithAPIVersion(apiVersion string) Option {
 	return func(opts *options) {
 		opts.apiVersion = apiVersion
+	}
+}
+
+// WithLogger passes the logger to the client. If not set, the default logger
+// is used.
+func WithLogger(logger logger.LLMLogger) Option {
+	return func(opts *options) {
+		logger = logger
 	}
 }

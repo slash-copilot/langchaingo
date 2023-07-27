@@ -2,6 +2,7 @@ package openai
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"reflect"
@@ -49,6 +50,7 @@ func (o *LLM) Generate(ctx context.Context, prompts []string, options ...llms.Ca
 
 	generations := make([]*llms.Generation, 0, len(prompts))
 	for _, prompt := range prompts {
+		o.client.Logger.LLMRequest(prompts[0])
 		result, err := o.client.CreateCompletion(ctx, &openaiclient.CompletionRequest{
 			Model:            opts.Model,
 			Prompt:           prompt,
@@ -61,8 +63,10 @@ func (o *LLM) Generate(ctx context.Context, prompts []string, options ...llms.Ca
 			TopP:             opts.TopP,
 		})
 		if err != nil {
+			o.client.Logger.LLMResponse(err.Error())
 			return nil, err
 		}
+		o.client.Logger.LLMResponse(result.Text)
 		generations = append(generations, &llms.Generation{
 			Text: result.Text,
 		})
@@ -167,8 +171,12 @@ func (o *Chat) Generate(ctx context.Context, messageSets [][]schema.ChatMessage,
 				Parameters:  fn.Parameters,
 			})
 		}
+		reqText, _ := json.Marshal(req)
+		o.client.Logger.LLMRequest(string(reqText))
 		result, err := o.client.CreateChat(ctx, req)
+
 		if err != nil {
+			o.client.Logger.LLMError(err)
 			return nil, err
 		}
 		if len(result.Choices) == 0 {
@@ -192,6 +200,7 @@ func (o *Chat) Generate(ctx context.Context, messageSets [][]schema.ChatMessage,
 			Text:           msg.Content,
 			GenerationInfo: generationInfo,
 		})
+		o.client.Logger.LLMResponse(msg.Content)
 	}
 
 	return generations, nil

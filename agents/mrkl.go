@@ -9,6 +9,7 @@ import (
 
 	"github.com/tmc/langchaingo/chains"
 	"github.com/tmc/langchaingo/llms"
+	"github.com/tmc/langchaingo/logger"
 	"github.com/tmc/langchaingo/schema"
 	"github.com/tmc/langchaingo/tools"
 )
@@ -31,6 +32,8 @@ type OneShotZeroAgent struct {
 	Tools []tools.Tool
 	// Output key is the key where the final output is placed.
 	OutputKey string
+	// Logger for the agent.
+	Logger logger.AgentLogger
 }
 
 var _ Agent = (*OneShotZeroAgent)(nil)
