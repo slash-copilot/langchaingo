@@ -1,8 +1,10 @@
-module llm-chain-agent-example
+module llmrkl-agent-custom-example
+
+replace github.com/tmc/langchaingo v0.0.0-20230726025230-7d5f9fd5e90a => ../../
 
 go 1.19
 
-require github.com/tmc/langchaingo v0.0.0-20230724172206-807bc9459e52
+require github.com/tmc/langchaingo v0.0.0-20230726025230-7d5f9fd5e90a
 
 require (
 	github.com/Masterminds/goutils v1.1.1 // indirect
