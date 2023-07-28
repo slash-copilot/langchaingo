@@ -1,7 +1,6 @@
 package openai
 
 import (
-	"github.com/tmc/langchaingo/llms/openai/internal/openaiclient"
 	"github.com/tmc/langchaingo/logger"
 )
 
@@ -35,7 +34,6 @@ type options struct {
 
 	logger logger.LLMLogger // optional
 
-	httpClient openaiclient.Doer
 }
 
 type Option func(*options)
@@ -93,14 +91,6 @@ func WithAPIVersion(apiVersion string) Option {
 // is used.
 func WithLogger(logger logger.LLMLogger) Option {
 	return func(opts *options) {
-		logger = logger
-	}
-}
-
-// WithHTTPClient allows setting a custom HTTP client. If not set, the default value
-// is http.DefaultClient.
-func WithHTTPClient(client openaiclient.Doer) Option {
-	return func(opts *options) {
-		opts.httpClient = client
+		opts.logger = logger
 	}
 }

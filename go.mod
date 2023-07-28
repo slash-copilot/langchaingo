@@ -81,6 +81,7 @@ require (
 	github.com/microcosm-cc/bluemonday v1.0.24
 	github.com/pinecone-io/go-pinecone v0.3.0
 	github.com/pkoukk/tiktoken-go v0.1.2
+	github.com/sashabaranov/go-openai v1.14.1
 	github.com/weaviate/weaviate v1.19.0
 	github.com/weaviate/weaviate-go-client/v4 v4.8.1
 	go.starlark.net v0.0.0-20230302034142-4b1e35fe2254

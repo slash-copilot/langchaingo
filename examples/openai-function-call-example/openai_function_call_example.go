@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/llms/openai"
@@ -12,7 +13,10 @@ import (
 )
 
 func main() {
-	llm, err := openai.NewChat(openai.WithModel("gpt-3.5-turbo-0613"))
+	llm, err := openai.NewChat(
+		openai.WithModel("gpt-3.5-turbo-0613"),
+		openai.WithToken(os.Getenv("OPENAI_API_KEY")),
+	)
 	if err != nil {
 		log.Fatal(err)
 	}

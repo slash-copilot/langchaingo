@@ -4,13 +4,21 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"net/http"
+	"io"
 	"os"
-	"reflect"
 
+	"github.com/sashabaranov/go-openai"
 	"github.com/tmc/langchaingo/llms"
-	"github.com/tmc/langchaingo/llms/openai/internal/openaiclient"
+	"github.com/tmc/langchaingo/logger"
 	"github.com/tmc/langchaingo/schema"
+)
+
+const (
+	defaultChatModel       = "gpt-3.5-turbo"
+	defaultCompletionModel = "text-davinci-003"
+	defaultEmbeddingModel  = "text-embedding-ada-002"
+
+	defaultMaxTokens = 1024
 )
 
 var (
@@ -18,12 +26,13 @@ var (
 	ErrMissingToken  = errors.New("missing the OpenAI API key, set it in the OPENAI_API_KEY environment variable")
 
 	ErrUnexpectedResponseLength = errors.New("unexpected length of response")
+	ErrUnexpectedEmbeddingModel = errors.New("unexpected embedding model")
 )
 
-type ChatMessage = openaiclient.ChatMessage
-
 type LLM struct {
-	client *openaiclient.Client
+	model  string
+	client *openai.Client
+	Logger logger.LLMLogger
 }
 
 var (
@@ -49,31 +58,111 @@ func (o *LLM) Generate(ctx context.Context, prompts []string, options ...llms.Ca
 		opt(&opts)
 	}
 
+	model := opts.Model
+	if len(model) == 0 {
+		model = o.model
+	}
+
 	generations := make([]*llms.Generation, 0, len(prompts))
+
+	request := openai.CompletionRequest{
+		Model:            model,
+		MaxTokens:        opts.MaxTokens,
+		Temperature:      float32(opts.Temperature),
+		TopP:             float32(opts.TopP),
+		Stream:           opts.StreamingFunc != nil,
+		Stop:             opts.StopWords,
+		N:                opts.N,
+		FrequencyPenalty: float32(opts.FrequencyPenalty),
+		PresencePenalty:  float32(opts.PresencePenalty),
+	}
+
 	for _, prompt := range prompts {
-		o.client.Logger.LLMRequest(prompts[0])
-		result, err := o.client.CreateCompletion(ctx, &openaiclient.CompletionRequest{
-			Model:            opts.Model,
-			Prompt:           prompt,
-			MaxTokens:        opts.MaxTokens,
-			StopWords:        opts.StopWords,
-			Temperature:      opts.Temperature,
-			N:                opts.N,
-			FrequencyPenalty: opts.FrequencyPenalty,
-			PresencePenalty:  opts.PresencePenalty,
-			TopP:             opts.TopP,
-		})
-		if err != nil {
-			o.client.Logger.LLMResponse(err.Error())
-			return nil, err
+		o.Logger.LLMRequest(prompt)
+		request.Prompt = prompt
+
+		if request.Stream {
+			generation, err := o.createCompletionStream(ctx, request, opts)
+			if err != nil {
+				o.Logger.LLMResponse(err.Error())
+				return nil, err
+			}
+			o.Logger.LLMResponse(generation.Text)
+			generations = append(generations, generation)
+		} else {
+			generation, err := o.createCompletion(ctx, request)
+			if err != nil {
+				o.Logger.LLMResponse(err.Error())
+				return nil, err
+			}
+			o.Logger.LLMResponse(generation.Text)
+			generations = append(generations, generation)
 		}
-		o.client.Logger.LLMResponse(result.Text)
-		generations = append(generations, &llms.Generation{
-			Text: result.Text,
-		})
 	}
 
 	return generations, nil
+}
+
+func (o *LLM) createCompletionStream(ctx context.Context, request openai.CompletionRequest, opts llms.CallOptions) (*llms.Generation, error) { // nolint:lll
+	stream, err := o.client.CreateCompletionStream(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	defer stream.Close()
+
+	output := ""
+	finishReason := ""
+	for {
+		resp, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		} else if err != nil {
+			return nil, err
+		}
+
+		if len(resp.Choices) == 0 {
+			return nil, ErrEmptyResponse
+		}
+
+		text := resp.Choices[0].Text
+		err = opts.StreamingFunc(ctx, []byte(text))
+		if err != nil {
+			return nil, err
+		}
+
+		output += text
+		finishReason = resp.Choices[0].FinishReason
+	}
+
+	return &llms.Generation{
+		Text: output,
+		GenerationInfo: map[string]any{
+			"FinishReason": finishReason,
+		},
+	}, nil
+}
+
+func (o *LLM) createCompletion(ctx context.Context, request openai.CompletionRequest) (*llms.Generation, error) {
+	resp, err := o.client.CreateCompletion(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(resp.Choices) == 0 {
+		return nil, ErrEmptyResponse
+	}
+
+	text := resp.Choices[0].Text
+	finishReason := resp.Choices[0].FinishReason
+	return &llms.Generation{
+		Text: text,
+		GenerationInfo: map[string]any{
+			"CompletionTokens": resp.Usage.CompletionTokens,
+			"PromptTokens":     resp.Usage.PromptTokens,
+			"TotalTokens":      resp.Usage.TotalTokens,
+			"FinishReason":     finishReason,
+		},
+	}, nil
 }
 
 func (o *LLM) GeneratePrompt(ctx context.Context, promptValues []schema.PromptValue, options ...llms.CallOption) (llms.LLMResult, error) { //nolint:lll
@@ -81,28 +170,50 @@ func (o *LLM) GeneratePrompt(ctx context.Context, promptValues []schema.PromptVa
 }
 
 func (o *LLM) GetNumTokens(text string) int {
-	return llms.CountTokens(o.client.Model, text)
+	return llms.CountTokens(o.model, text)
 }
 
 // CreateEmbedding creates embeddings for the given input texts.
-func (o *LLM) CreateEmbedding(ctx context.Context, inputTexts []string) ([][]float64, error) {
-	embeddings, err := o.client.CreateEmbedding(ctx, &openaiclient.EmbeddingRequest{
+func (o *LLM) CreateEmbedding(ctx context.Context, model string, inputTexts []string) ([][]float64, error) {
+	if len(model) == 0 {
+		model = defaultEmbeddingModel
+	}
+
+	embeddingModel, ok := stringToEmbeddingModel[model]
+	if !ok {
+		return nil, ErrUnexpectedEmbeddingModel
+	}
+	resp, err := o.client.CreateEmbeddings(ctx, openai.EmbeddingRequest{
+		Model: embeddingModel,
 		Input: inputTexts,
 	})
 	if err != nil {
-		return nil, err
+		return [][]float64{}, err
 	}
-	if len(embeddings) == 0 {
-		return nil, ErrEmptyResponse
+
+	data := resp.Data
+	if len(data) == 0 {
+		return [][]float64{}, ErrEmptyResponse
 	}
-	if len(inputTexts) != len(embeddings) {
-		return embeddings, ErrUnexpectedResponseLength
+	if len(inputTexts) != len(data) {
+		return [][]float64{}, ErrUnexpectedResponseLength
+	}
+
+	embeddings := make([][]float64, len(data))
+	for i := range data {
+		embedding := make([]float64, len(data[i].Embedding))
+		for j := range data[i].Embedding {
+			embedding[j] = float64(data[i].Embedding[j])
+		}
+		embeddings[i] = embedding
 	}
 	return embeddings, nil
 }
 
 type Chat struct {
-	client *openaiclient.Client
+	client *openai.Client
+	model  string
+	Logger logger.LLMLogger
 }
 
 var (
@@ -123,92 +234,181 @@ func (o *Chat) Call(ctx context.Context, messages []schema.ChatMessage, options 
 }
 
 func (o *Chat) Generate(ctx context.Context, messageSets [][]schema.ChatMessage, options ...llms.CallOption) ([]*llms.Generation, error) { // nolint:lll,cyclop
-	opts := llms.CallOptions{}
+	opts := llms.CallOptions{MaxTokens: defaultMaxTokens}
 	for _, opt := range options {
 		opt(&opts)
 	}
+
+	model := opts.Model
+	if len(model) == 0 {
+		model = o.model
+	}
+
+	request := openai.ChatCompletionRequest{
+		Model:            model,
+		MaxTokens:        opts.MaxTokens,
+		Temperature:      float32(opts.Temperature),
+		TopP:             float32(opts.TopP),
+		Stream:           opts.StreamingFunc != nil,
+		Stop:             opts.StopWords,
+		N:                opts.N,
+		FrequencyPenalty: float32(opts.FrequencyPenalty),
+		PresencePenalty:  float32(opts.PresencePenalty),
+	}
+
+	for _, fn := range opts.Functions {
+		request.Functions = append(request.Functions, openai.FunctionDefinition{
+			Name:        fn.Name,
+			Description: fn.Description,
+			Parameters:  fn.Parameters,
+		})
+		request.FunctionCall = llms.FunctionCallBehaviorAuto
+	}
+
 	generations := make([]*llms.Generation, 0, len(messageSets))
-	for _, messageSet := range messageSets {
-		msgs := make([]*openaiclient.ChatMessage, len(messageSet))
-		for i, m := range messageSet {
-			msg := &openaiclient.ChatMessage{
+
+	openaiMessageSets := make([][]openai.ChatCompletionMessage, len(messageSets))
+	for i, messageSet := range messageSets {
+		msgs := make([]openai.ChatCompletionMessage, len(messageSet))
+		for j, m := range messageSet {
+			msg := openai.ChatCompletionMessage{
 				Content: m.GetContent(),
 			}
 			typ := m.GetType()
 			switch typ {
 			case schema.ChatMessageTypeSystem:
-				msg.Role = "system"
+				msg.Role = openai.ChatMessageRoleSystem
 			case schema.ChatMessageTypeAI:
-				msg.Role = "assistant"
+				msg.Role = openai.ChatMessageRoleAssistant
 			case schema.ChatMessageTypeHuman:
-				msg.Role = "user"
+				msg.Role = openai.ChatMessageRoleUser
 			case schema.ChatMessageTypeGeneric:
-				msg.Role = "user"
+				msg.Role = openai.ChatMessageRoleUser
 			case schema.ChatMessageTypeFunction:
-				msg.Role = "function"
+				msg.Role = openai.ChatMessageRoleFunction
 			}
-			if n, ok := m.(schema.Named); ok {
-				msg.Name = n.GetName()
-			}
-			msgs[i] = msg
+			msgs[j] = msg
 		}
-		req := &openaiclient.ChatRequest{
-			Model:            opts.Model,
-			StopWords:        opts.StopWords,
-			Messages:         msgs,
-			StreamingFunc:    opts.StreamingFunc,
-			Temperature:      opts.Temperature,
-			MaxTokens:        opts.MaxTokens,
-			N:                opts.N,
-			FrequencyPenalty: opts.FrequencyPenalty,
-			PresencePenalty:  opts.PresencePenalty,
-
-			FunctionCallBehavior: openaiclient.FunctionCallBehavior(opts.FunctionCallBehavior),
-		}
-		for _, fn := range opts.Functions {
-			req.Functions = append(req.Functions, openaiclient.FunctionDefinition{
-				Name:        fn.Name,
-				Description: fn.Description,
-				Parameters:  fn.Parameters,
-			})
-		}
-		reqText, _ := json.Marshal(req)
-		o.client.Logger.LLMRequest(string(reqText))
-		result, err := o.client.CreateChat(ctx, req)
-
-		if err != nil {
-			o.client.Logger.LLMError(err)
-			return nil, err
-		}
-		if len(result.Choices) == 0 {
-			return nil, ErrEmptyResponse
-		}
-		generationInfo := make(map[string]any, reflect.ValueOf(result.Usage).NumField())
-		generationInfo["CompletionTokens"] = result.Usage.CompletionTokens
-		generationInfo["PromptTokens"] = result.Usage.PromptTokens
-		generationInfo["TotalTokens"] = result.Usage.TotalTokens
-		msg := &schema.AIChatMessage{
-			Content: result.Choices[0].Message.Content,
-		}
-		if result.Choices[0].FinishReason == "function_call" {
-			msg.FunctionCall = &schema.FunctionCall{
-				Name:      result.Choices[0].Message.FunctionCall.Name,
-				Arguments: result.Choices[0].Message.FunctionCall.Arguments,
-			}
-		}
-		generations = append(generations, &llms.Generation{
-			Message:        msg,
-			Text:           msg.Content,
-			GenerationInfo: generationInfo,
-		})
-		o.client.Logger.LLMResponse(msg.Content)
+		openaiMessageSets[i] = msgs
 	}
 
+	for _, msgs := range openaiMessageSets {
+		request.Messages = msgs
+
+		v, _ := json.Marshal(request.Messages)
+		o.Logger.LLMRequest(string(v))
+
+		if request.Stream {
+			generation, err := o.createChatCompletionStream(ctx, request, opts)
+			if err != nil {
+				o.Logger.LLMError(err)
+				return nil, err
+			}
+			o.Logger.LLMResponse(generation.Text)
+			generations = append(generations, generation)
+		} else {
+			generation, err := o.createChatCompletion(ctx, request)
+			if err != nil {
+				o.Logger.LLMError(err)
+				return nil, err
+			}
+			o.Logger.LLMResponse(generation.Text)
+			generations = append(generations, generation)
+		}
+	}
 	return generations, nil
 }
 
+func (o *Chat) createChatCompletionStream(ctx context.Context, request openai.ChatCompletionRequest, opts llms.CallOptions) (*llms.Generation, error) { // nolint:lll
+	stream, err := o.client.CreateChatCompletionStream(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	defer stream.Close()
+
+	var (
+		text         = ""
+		finishReason = ""
+		functionCall *schema.FunctionCall
+	)
+
+	for {
+		resp, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		} else if err != nil {
+			return nil, err
+		}
+
+		if len(resp.Choices) == 0 {
+			return nil, ErrEmptyResponse
+		}
+
+		content := resp.Choices[0].Delta.Content
+		err = opts.StreamingFunc(ctx, []byte(content))
+		if err != nil {
+			return nil, err
+		}
+
+		text += content
+		finishReason = string(resp.Choices[0].FinishReason)
+
+		if resp.Choices[0].FinishReason == openai.FinishReasonFunctionCall {
+			functionCall = &schema.FunctionCall{
+				Name:      resp.Choices[0].Delta.FunctionCall.Name,
+				Arguments: resp.Choices[0].Delta.FunctionCall.Arguments,
+			}
+		}
+	}
+
+	return &llms.Generation{
+		Message: &schema.AIChatMessage{
+			Content:      text,
+			FunctionCall: functionCall,
+		},
+		GenerationInfo: map[string]any{
+			"FinishReason": finishReason,
+		},
+	}, nil
+}
+
+func (o *Chat) createChatCompletion(ctx context.Context, request openai.ChatCompletionRequest) (*llms.Generation, error) { // nolint:lll
+	resp, err := o.client.CreateChatCompletion(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(resp.Choices) == 0 {
+		return nil, ErrEmptyResponse
+	}
+
+	text := resp.Choices[0].Message.Content
+	finishReason := string(resp.Choices[0].FinishReason)
+	var functionCall *schema.FunctionCall
+
+	if resp.Choices[0].FinishReason == openai.FinishReasonFunctionCall {
+		functionCall = &schema.FunctionCall{
+			Name:      resp.Choices[0].Message.FunctionCall.Name,
+			Arguments: resp.Choices[0].Message.FunctionCall.Arguments,
+		}
+	}
+
+	return &llms.Generation{
+		Message: &schema.AIChatMessage{
+			Content:      text,
+			FunctionCall: functionCall,
+		},
+		GenerationInfo: map[string]any{
+			"CompletionTokens": resp.Usage.CompletionTokens,
+			"PromptTokens":     resp.Usage.PromptTokens,
+			"TotalTokens":      resp.Usage.TotalTokens,
+			"FinishReason":     finishReason,
+		},
+	}, nil
+}
+
 func (o *Chat) GetNumTokens(text string) int {
-	return llms.CountTokens(o.client.Model, text)
+	return llms.CountTokens(o.model, text)
 }
 
 func (o *Chat) GeneratePrompt(ctx context.Context, promptValues []schema.PromptValue, options ...llms.CallOption) (llms.LLMResult, error) { //nolint:lll
@@ -217,40 +417,64 @@ func (o *Chat) GeneratePrompt(ctx context.Context, promptValues []schema.PromptV
 
 // New returns a new OpenAI LLM.
 func New(opts ...Option) (*LLM, error) {
-	c, err := newClient(opts...)
-	return &LLM{
-		client: c,
-	}, err
-}
-
-// NewChat returns a new OpenAI chat LLM.
-func NewChat(opts ...Option) (*Chat, error) {
-	c, err := newClient(opts...)
-	return &Chat{
-		client: c,
-	}, err
-}
-
-func newClient(opts ...Option) (*openaiclient.Client, error) {
 	options := &options{
-		token:        os.Getenv(tokenEnvVarName),
-		model:        os.Getenv(modelEnvVarName),
-		baseURL:      os.Getenv(baseURLEnvVarName),
-		organization: os.Getenv(organizationEnvVarName),
-		apiType:      APITypeOpenAI,
-		httpClient:   http.DefaultClient,
+		token:   os.Getenv(tokenEnvVarName),
+		model:   os.Getenv(modelEnvVarName),
+		baseURL: os.Getenv(baseURLEnvVarName),
+		logger:  logger.GetLLMLogger(),
 	}
 
 	for _, opt := range opts {
 		opt(options)
 	}
 
+	if len(options.model) == 0 {
+		options.model = defaultCompletionModel
+	}
+
+	c, err := newClient(options)
+	return &LLM{
+		model:  options.model,
+		client: c,
+		Logger: options.logger,
+	}, err
+}
+
+// NewChat returns a new OpenAI chat LLM.
+func NewChat(opts ...Option) (*Chat, error) {
+	options := &options{
+		token:   os.Getenv(tokenEnvVarName),
+		model:   os.Getenv(modelEnvVarName),
+		baseURL: os.Getenv(baseURLEnvVarName),
+		logger:  logger.GetLLMLogger(),
+	}
+
+	for _, opt := range opts {
+		opt(options)
+	}
+
+	if len(options.model) == 0 {
+		options.model = defaultChatModel
+	}
+
+	c, err := newClient(options)
+	return &Chat{
+		model:  options.model,
+		client: c,
+		Logger: options.logger,
+	}, err
+}
+
+func newClient(options *options) (*openai.Client, error) {
 	if len(options.token) == 0 {
 		return nil, ErrMissingToken
 	}
-
-	return openaiclient.New(options.token, options.model, options.baseURL, options.organization,
-		openaiclient.APIType(options.apiType), "", options.httpClient)
+	config := openai.DefaultConfig(options.token)
+	if options.baseURL != "" {
+		config.BaseURL = options.baseURL
+	}
+	client := openai.NewClientWithConfig(config)
+	return client, nil
 }
 
 // NewAzure returns a new Azure OpenAI LLM .
@@ -269,7 +493,7 @@ func NewAzureChat(opts ...Option) (*Chat, error) {
 	}, err
 }
 
-func newAzureClient(opts ...Option) (*openaiclient.Client, error) {
+func newAzureClient(opts ...Option) (*openai.Client, error) {
 	options := &options{
 		token:        os.Getenv(tokenEnvVarName),
 		model:        os.Getenv(modelEnvVarName),
@@ -277,7 +501,6 @@ func newAzureClient(opts ...Option) (*openaiclient.Client, error) {
 		organization: os.Getenv(organizationEnvVarName),
 		apiType:      APITypeAzure,
 		apiVersion:   DefaultAPIVersion,
-		httpClient:   http.DefaultClient,
 	}
 
 	for _, opt := range opts {
@@ -288,6 +511,9 @@ func newAzureClient(opts ...Option) (*openaiclient.Client, error) {
 		return nil, ErrMissingToken
 	}
 
-	return openaiclient.New(options.token, options.model, options.baseURL,
-		options.organization, openaiclient.APIType(options.apiType), options.apiVersion, options.httpClient)
+	config := openai.DefaultAzureConfig(options.token, options.baseURL)
+	config.APIVersion = options.apiVersion
+	config.OrgID = options.organization
+
+	return openai.NewClientWithConfig(config), nil
 }
