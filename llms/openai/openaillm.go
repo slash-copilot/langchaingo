@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"os"
 	"reflect"
 
@@ -237,6 +238,7 @@ func newClient(opts ...Option) (*openaiclient.Client, error) {
 		baseURL:      os.Getenv(baseURLEnvVarName),
 		organization: os.Getenv(organizationEnvVarName),
 		apiType:      APITypeOpenAI,
+		httpClient:   http.DefaultClient,
 	}
 
 	for _, opt := range opts {
@@ -248,7 +250,7 @@ func newClient(opts ...Option) (*openaiclient.Client, error) {
 	}
 
 	return openaiclient.New(options.token, options.model, options.baseURL, options.organization,
-		openaiclient.APIType(options.apiType), "")
+		openaiclient.APIType(options.apiType), "", options.httpClient)
 }
 
 // NewAzure returns a new Azure OpenAI LLM .
@@ -275,6 +277,7 @@ func newAzureClient(opts ...Option) (*openaiclient.Client, error) {
 		organization: os.Getenv(organizationEnvVarName),
 		apiType:      APITypeAzure,
 		apiVersion:   DefaultAPIVersion,
+		httpClient:   http.DefaultClient,
 	}
 
 	for _, opt := range opts {
@@ -286,5 +289,5 @@ func newAzureClient(opts ...Option) (*openaiclient.Client, error) {
 	}
 
 	return openaiclient.New(options.token, options.model, options.baseURL,
-		options.organization, openaiclient.APIType(options.apiType), options.apiVersion)
+		options.organization, openaiclient.APIType(options.apiType), options.apiVersion, options.httpClient)
 }
