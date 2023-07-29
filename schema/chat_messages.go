@@ -24,6 +24,8 @@ const (
 	ChatMessageTypeGeneric ChatMessageType = "generic"
 	// ChatMessageTypeFunction is a message sent by a function.
 	ChatMessageTypeFunction ChatMessageType = "function"
+	// ChatMessageTypeUser is a message sent by a user.
+	ChatMessageTypeUser ChatMessageType = "user"
 )
 
 // ChatMessage represents a message in a chat.
@@ -46,6 +48,7 @@ var (
 	_ ChatMessage = SystemChatMessage{}
 	_ ChatMessage = GenericChatMessage{}
 	_ ChatMessage = FunctionChatMessage{}
+	_ ChatMessage = UserChatMessage{}
 )
 
 // AIChatMessage is a message sent by an AI.
@@ -67,6 +70,14 @@ type HumanChatMessage struct {
 
 func (m HumanChatMessage) GetType() ChatMessageType { return ChatMessageTypeHuman }
 func (m HumanChatMessage) GetContent() string       { return m.Content }
+
+// UserChatMessage is a message sent by a human.
+type UserChatMessage struct {
+	Content string
+}
+
+func (m UserChatMessage) GetType() ChatMessageType { return ChatMessageTypeUser }
+func (m UserChatMessage) GetContent() string       { return m.Content }
 
 // SystemChatMessage is a chat message representing information that should be instructions to the AI system.
 type SystemChatMessage struct {
