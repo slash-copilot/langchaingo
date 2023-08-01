@@ -23,10 +23,6 @@ func newClient(opts ...Option) (*openai.Client, error) {
 		return nil, ErrMissingToken
 	}
 
-	if len(options.token) == 0 {
-		return nil, ErrMissingToken
-	}
-
 	config := openai.DefaultConfig(options.token)
 
 	if options.baseURL != "" {

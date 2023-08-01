@@ -26,9 +26,18 @@ var (
 // NewChat returns a new OpenAI chat LLM.
 func NewChat(opts ...Option) (*Chat, error) {
 	c, err := newClient(opts...)
+
+	options := &options{
+		model: defaultChatModel,
+	}
+
+	for _, opt := range opts {
+		opt(options)
+	}
+
 	return &Chat{
 		client: c,
-		model:  defaultChatModel,
+		model:  options.model,
 		Logger: logger.GetLLMLogger(),
 	}, err
 }
@@ -206,6 +215,7 @@ func (o *Chat) createChatCompletion(ctx context.Context, request openai.ChatComp
 	}
 
 	return &llms.Generation{
+		Text: text,
 		Message: &schema.AIChatMessage{
 			Content:      text,
 			FunctionCall: functionCall,
@@ -225,4 +235,41 @@ func (o *Chat) GetNumTokens(text string) int {
 
 func (o *Chat) GeneratePrompt(ctx context.Context, promptValues []schema.PromptValue, options ...llms.CallOption) (llms.LLMResult, error) { //nolint:lll
 	return llms.GenerateChatPrompt(ctx, o, promptValues, options...)
+}
+
+// CreateEmbedding creates embeddings for the given input texts.
+func (o *Chat) CreateEmbedding(ctx context.Context, model string, inputTexts []string) ([][]float64, error) {
+	if len(model) == 0 {
+		model = defaultEmbeddingModel
+	}
+
+	embeddingModel, ok := stringToEmbeddingModel[model]
+	if !ok {
+		return nil, ErrUnexpectedEmbeddingModel
+	}
+	resp, err := o.client.CreateEmbeddings(ctx, openai.EmbeddingRequest{
+		Model: embeddingModel,
+		Input: inputTexts,
+	})
+	if err != nil {
+		return [][]float64{}, err
+	}
+
+	data := resp.Data
+	if len(data) == 0 {
+		return [][]float64{}, ErrEmptyResponse
+	}
+	if len(inputTexts) != len(data) {
+		return [][]float64{}, ErrUnexpectedResponseLength
+	}
+
+	embeddings := make([][]float64, len(data))
+	for i := range data {
+		embedding := make([]float64, len(data[i].Embedding))
+		for j := range data[i].Embedding {
+			embedding[j] = float64(data[i].Embedding[j])
+		}
+		embeddings[i] = embedding
+	}
+	return embeddings, nil
 }

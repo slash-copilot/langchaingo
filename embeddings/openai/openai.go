@@ -37,7 +37,7 @@ func (e OpenAI) EmbedDocuments(ctx context.Context, texts []string) ([][]float64
 
 	emb := make([][]float64, 0, len(texts))
 	for _, texts := range batchedTexts {
-		curTextEmbeddings, err := e.client.CreateEmbedding(ctx, texts)
+		curTextEmbeddings, err := e.client.CreateEmbedding(ctx, "", texts)
 		if err != nil {
 			return nil, err
 		}
@@ -64,7 +64,7 @@ func (e OpenAI) EmbedQuery(ctx context.Context, text string) ([]float64, error) 
 		text = strings.ReplaceAll(text, "\n", " ")
 	}
 
-	emb, err := e.client.CreateEmbedding(ctx, []string{text})
+	emb, err := e.client.CreateEmbedding(ctx, "", []string{text})
 	if err != nil {
 		return nil, err
 	}

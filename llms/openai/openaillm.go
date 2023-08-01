@@ -41,9 +41,18 @@ var (
 // New returns a new OpenAI LLM.
 func New(opts ...Option) (*LLM, error) {
 	c, err := newClient(opts...)
+
+	options := &options{
+		model: defaultCompletionModel,
+	}
+
+	for _, opt := range opts {
+		opt(options)
+	}
+
 	return &LLM{
 		client: c,
-		model:  defaultCompletionModel,
+		model:  options.model,
 		Logger: logger.GetLLMLogger(),
 	}, err
 }

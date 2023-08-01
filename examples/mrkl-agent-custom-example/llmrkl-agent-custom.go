@@ -21,9 +21,9 @@ func main() {
 
 func run() error {
 	// We can construct an LLMChain from a PromptTemplate and an LLM.
-	llm, err := openai.New(
-		openai.WithBaseURL(os.Getenv("OPENAI_BASE_URL")),
-		openai.WithToken(os.Getenv("OPENAI_API_KEY")),
+	llm, err := openai.NewChat(
+		openai.WithBaseURL(os.Getenv("PROXY_OPENAI_API_BASE_URL")),
+		openai.WithToken(os.Getenv("PROXY_OPENAI_API_KEY")),
 	)
 	if err != nil {
 		return err
