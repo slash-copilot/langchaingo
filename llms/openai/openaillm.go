@@ -43,7 +43,8 @@ func New(opts ...Option) (*LLM, error) {
 	c, err := newClient(opts...)
 
 	options := &options{
-		model: defaultCompletionModel,
+		model:  defaultCompletionModel,
+		logger: logger.GetLLMLogger(),
 	}
 
 	for _, opt := range opts {
@@ -53,7 +54,7 @@ func New(opts ...Option) (*LLM, error) {
 	return &LLM{
 		client: c,
 		model:  options.model,
-		Logger: logger.GetLLMLogger(),
+		Logger: options.logger,
 	}, err
 }
 

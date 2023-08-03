@@ -28,7 +28,8 @@ func NewChat(opts ...Option) (*Chat, error) {
 	c, err := newClient(opts...)
 
 	options := &options{
-		model: defaultChatModel,
+		model:  defaultChatModel,
+		logger: logger.GetLLMLogger(),
 	}
 
 	for _, opt := range opts {
@@ -38,7 +39,7 @@ func NewChat(opts ...Option) (*Chat, error) {
 	return &Chat{
 		client: c,
 		model:  options.model,
-		Logger: logger.GetLLMLogger(),
+		Logger: options.logger,
 	}, err
 }
 
