@@ -1,5 +1,7 @@
 package logger
 
+import "github.com/tmc/langchaingo/schema"
+
 type LLMLogger interface {
 	LLMRequest(msg string)
 	LLMResponse(msg string)
@@ -7,5 +9,5 @@ type LLMLogger interface {
 }
 
 type AgentLogger interface {
-	AgentThought(msg string)
+	AgentThought(schema.AgentAction)
 }

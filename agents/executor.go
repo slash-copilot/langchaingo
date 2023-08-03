@@ -75,7 +75,7 @@ func (e Executor) Call(ctx context.Context, inputValues map[string]any, _ ...cha
 				continue
 			}
 
-			e.Logger.AgentThought(action.Log)
+			e.Logger.AgentThought(action)
 
 			observation, err := tool.Call(ctx, action.ToolInput)
 			if err != nil {

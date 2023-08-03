@@ -1,6 +1,9 @@
 package logger
 
-import "github.com/fatih/color"
+import (
+	"github.com/fatih/color"
+	"github.com/tmc/langchaingo/schema"
+)
 
 func GetAgentLogger() AgentLogger {
 	return &defaultAgentLogger{}
@@ -11,10 +14,10 @@ type defaultAgentLogger struct{}
 var _ AgentLogger = defaultAgentLogger{}
 
 // AgentThought implements AgentLogger.
-func (defaultAgentLogger) AgentThought(msg string) {
+func (defaultAgentLogger) AgentThought(action schema.AgentAction) {
 	// Display banner
 	banner("Agent Action")
 
 	// Display thought
-	message("Thought", msg, color.HiMagenta)
+	message("Thought", action.Log, color.HiMagenta)
 }
