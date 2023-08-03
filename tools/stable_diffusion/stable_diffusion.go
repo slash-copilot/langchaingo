@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
+	"github.com/tmc/langchaingo/outputparser"
 	"github.com/tmc/langchaingo/tools"
 	"github.com/tmc/langchaingo/tools/stable_diffusion/internal"
 )
@@ -17,7 +17,8 @@ import (
 var ErrMissingURL = errors.New("missing `SD_WEBUI_URL` environment variable")
 
 type Tool struct {
-	SDWebUIClient *internal.SDWebUIClient
+	SDWebUIClient    *internal.SDWebUIClient
+	structuredPrompt outputparser.Structured
 }
 
 var _ tools.Tool = Tool{}
@@ -33,37 +34,52 @@ func New() (*Tool, error) {
 
 	return &Tool{
 		SDWebUIClient: client,
+		structuredPrompt: outputparser.NewStructured([]outputparser.ResponseSchema{
+			{
+				Name:        "prompt",
+				Description: "required, detailed keywords to describe the subject, separated by commas",
+			},
+			{
+				Name:        "negativePrompt",
+				Description: "required, detailed keywords we want to exclude from the final, separated by commas",
+			},
+		}),
 	}, nil
 }
-
 func (t Tool) Name() string {
 	return "stable-diffusion"
 }
 
 func (t Tool) Description() string {
-	return `
+
+	return fmt.Sprintf(`
 	You can generate images with 'stable-diffusion'. This tool is exclusively for visual content.
-	Guidelines:
-	- Visually describe the moods, details, structures, styles, and/or proportions of the image. Remember, the focus is on visual attributes.
-	- Craft your input by "showing" and not "telling" the imagery. Think in terms of what you'd want to see in a photograph or a painting.
-	- It's best to follow this format for image creation:
-	"detailed keywords to describe the subject, separated by comma | keywords we want to exclude from the final image"
-	- Here's an example prompt for generating a realistic portrait photo of a man:
-	"photo of a man in black clothes, half body, high detailed skin, coastline, overcast weather, wind, waves, 8k uhd, dslr, soft lighting, high quality, film grain, Fujifilm XT3 | semi-realistic, cgi, 3d, render, sketch, cartoon, drawing, anime, out of frame, low quality, ugly, mutation, deformed"
-	- Generate images only once per human query unless explicitly requested by the user"`
+	call it with the following format:
+		%s,
+	- here is an an example prompt for generating a realistic portrait photo of a man:
+	 {
+		"prompt": "photo of a man in black clothes, half body, high detailed skin, coastline, overcast weather, wind, waves, 8k uhd, dslr, soft lighting, high quality, film grain, Fujifilm XT3 ",
+		"negativePrompt": "semi-realistic, cgi, 3d, render, sketch, cartoon, drawing, anime, out of frame, low quality, ugly, mutation, deformed"
+	 }
+	`, t.structuredPrompt.GetFormatInstructions())
 }
 
 func (t Tool) Call(ctx context.Context, input string) (string, error) {
-	input = strings.Trim(input, "\n")
-	inputs := strings.Split(input, "|")
+	values, err := t.structuredPrompt.Parse(input)
 
-	if len(inputs) != 2 {
-		return "", fmt.Errorf("stable-diffusion: invalid input format")
+	if err != nil {
+		return "", fmt.Errorf("stable-diffusion: invalid input format, %v", err)
+	}
+
+	valuesMap, ok := values.(map[string]string)
+
+	if !ok {
+		return "", fmt.Errorf("stable-diffusion: invalid input format, %v", err)
 	}
 
 	payload := internal.TXT2IMGReq{
-		Prompt:         inputs[0],
-		NegativePrompt: inputs[1],
+		Prompt:         valuesMap["prompt"],
+		NegativePrompt: valuesMap["negativePrompt"],
 		Steps:          20,
 		Width:          512,
 		Height:         512,
