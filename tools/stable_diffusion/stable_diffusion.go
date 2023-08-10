@@ -19,31 +19,97 @@ var ErrMissingURL = errors.New("missing `SD_WEBUI_URL` environment variable")
 type Tool struct {
 	SDWebUIClient    *internal.SDWebUIClient
 	structuredPrompt outputparser.Structured
+	options          *createOptions
 }
 
 var _ tools.Tool = Tool{}
 
-// New creates a new serpapi tool to search on internet.
-func New() (*Tool, error) {
-	url := os.Getenv("SD_WEBUI_URL")
-	if url == "" {
+type createOptions struct {
+	URL        string
+	Iterations int
+	Width      int
+	Height     int
+	OutputPath string
+	StaticPath string
+}
+
+func DefaultCreateOptions() *createOptions {
+	return &createOptions{
+		URL:        os.Getenv("SD_WEBUI_URL"),
+		Iterations: 20,
+		Width:      512,
+		Height:     512,
+		OutputPath: "./images",
+		StaticPath: "/static/images",
+	}
+}
+
+type CreateSDOption func(*createOptions)
+
+func WithURL(url string) func(*createOptions) {
+	return func(o *createOptions) {
+		o.URL = url
+	}
+}
+
+func WithIterations(iterations int) func(*createOptions) {
+	return func(o *createOptions) {
+		o.Iterations = iterations
+	}
+}
+
+func WithWidth(width int) func(*createOptions) {
+	return func(o *createOptions) {
+		o.Width = width
+	}
+}
+
+func WithHeight(height int) func(*createOptions) {
+	return func(o *createOptions) {
+		o.Height = height
+	}
+}
+
+func WithOutputPath(outputPath string) func(*createOptions) {
+	return func(o *createOptions) {
+		o.OutputPath = outputPath
+	}
+}
+
+func WithStaticPath(staticPath string) func(*createOptions) {
+	return func(o *createOptions) {
+		o.StaticPath = staticPath
+	}
+}
+
+// New creates a new stable_diffusion tool to generate images.
+func New(opts ...CreateSDOption) (*Tool, error) {
+	options := DefaultCreateOptions()
+
+	for _, opt := range opts {
+		opt(options)
+	}
+
+	if options.URL == "" {
 		return nil, ErrMissingURL
 	}
+
 	client := internal.NewSDWebUIClient()
-	client.SetAPIUrl(url)
+	client.SetAPIUrl(options.URL)
 
 	return &Tool{
 		SDWebUIClient: client,
 		structuredPrompt: outputparser.NewStructured([]outputparser.ResponseSchema{
 			{
 				Name:        "prompt",
-				Description: "required, detailed keywords to describe the subject, separated by commas",
+				Description: "Required, Detailed keywords to describe the subject, using at least 7 keywords to accurately describe the image, separated by comma",
 			},
 			{
 				Name:        "negativePrompt",
-				Description: "required, detailed keywords we want to exclude from the final, separated by commas",
+				Description: "Required, Detailed Keywords we want to exclude from the final image, using at least 7 keywords to accurately describe the image, separated by comma",
 			},
 		}),
+		options: options,
 	}, nil
 }
 func (t Tool) Name() string {
@@ -51,17 +117,19 @@ func (t Tool) Name() string {
 }
 
 func (t Tool) Description() string {
-
+	_structuredFormatInstructionTemplate := "You can call this tool by output markdown code snippet formatted in the following schema: \n```json\n{\n%s}\n```" //nolint
 	return fmt.Sprintf(`
 	You can generate images with 'stable-diffusion'. This tool is exclusively for visual content.
-	call it with the following format:
-		%s,
-	- here is an an example prompt for generating a realistic portrait photo of a man:
+Guidelines:
+- Visually describe the moods, details, structures, styles, and/or proportions of the image. Remember, the focus is on visual attributes.
+- Craft your input by "showing" and not "telling" the imagery. Think in terms of what you'd want to see in a photograph or a painting.
+- %s, 
+- Here is an an example call for generating a realistic portrait photo of a man:
 	 {
-		"prompt": "photo of a man in black clothes, half body, high detailed skin, coastline, overcast weather, wind, waves, 8k uhd, dslr, soft lighting, high quality, film grain, Fujifilm XT3 ",
+		"prompt": "photo of a man in black clothes, half body, high detailed skin, coastline, overcast weather, wind, waves, 8k uhd, dslr, soft lighting, high quality, film grain, Fujifilm XT3",
 		"negativePrompt": "semi-realistic, cgi, 3d, render, sketch, cartoon, drawing, anime, out of frame, low quality, ugly, mutation, deformed"
 	 }
-	`, t.structuredPrompt.GetFormatInstructions())
+	`, t.structuredPrompt.GetFormatInstructionsWithPrompts(_structuredFormatInstructionTemplate))
 }
 
 func (t Tool) Call(ctx context.Context, input string) (string, error) {
@@ -99,7 +167,8 @@ func (t Tool) Call(ctx context.Context, input string) (string, error) {
 	}
 
 	imageName := fmt.Sprintf("%d.png", time.Now().UnixNano())
-	outputPath := filepath.Join(".", "images", imageName)
+	outputPath := filepath.Join(t.options.OutputPath, imageName)
+	staticPath := filepath.Join(t.options.StaticPath, imageName)
 
 	if _, err := os.Stat(filepath.Dir(outputPath)); os.IsNotExist(err) {
 		err = os.MkdirAll(filepath.Dir(outputPath), os.ModePerm)
@@ -114,5 +183,5 @@ func (t Tool) Call(ctx context.Context, input string) (string, error) {
 		return "", err
 	}
 
-	return fmt.Sprintf("![generated image](/%s)", outputPath), nil
+	return fmt.Sprintf("![generated image](/%s)", staticPath), nil
 }

@@ -124,6 +124,19 @@ func (p Structured) GetFormatInstructions() string {
 	return fmt.Sprintf(_structuredFormatInstructionTemplate, jsonLines)
 }
 
+func (p Structured) GetFormatInstructionsWithPrompts(template string) string {
+	jsonLines := ""
+	for _, rs := range p.ResponseSchemas {
+		jsonLines += "\t" + fmt.Sprintf(
+			_structuredLineTemplate,
+			rs.Name,
+			"string", /* type of the filed*/
+			rs.Description,
+		)
+	}
+	return fmt.Sprintf(template, jsonLines)
+}
+
 // Type returns the type of the output parser.
 func (p Structured) Type() string {
 	return "structured_parser"
