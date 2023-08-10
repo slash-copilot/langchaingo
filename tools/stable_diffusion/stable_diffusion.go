@@ -18,7 +18,7 @@ var ErrMissingURL = errors.New("missing `SD_WEBUI_URL` environment variable")
 
 type Tool struct {
 	SDWebUIClient    *internal.SDWebUIClient
-	structuredPrompt outputparser.Structured
+	structuredPrompt outputparser.StructuredJSON
 	options          *createOptions
 }
 
@@ -40,7 +40,7 @@ func DefaultCreateOptions() *createOptions {
 		Width:      512,
 		Height:     512,
 		OutputPath: "./images",
-		StaticPath: "/static/images",
+		StaticPath: "static/images",
 	}
 }
 
@@ -99,7 +99,7 @@ func New(opts ...CreateSDOption) (*Tool, error) {
 
 	return &Tool{
 		SDWebUIClient: client,
-		structuredPrompt: outputparser.NewStructured([]outputparser.ResponseSchema{
+		structuredPrompt: outputparser.NewStructuredJSON([]outputparser.ResponseJSONSchema{
 			{
 				Name:        "prompt",
 				Description: "Required, Detailed keywords to describe the subject, using at least 7 keywords to accurately describe the image, separated by comma",
@@ -117,19 +117,20 @@ func (t Tool) Name() string {
 }
 
 func (t Tool) Description() string {
-	_structuredFormatInstructionTemplate := "You can call this tool by output markdown code snippet formatted in the following schema: \n```json\n{\n%s}\n```" //nolint
 	return fmt.Sprintf(`
 	You can generate images with 'stable-diffusion'. This tool is exclusively for visual content.
 Guidelines:
-- Visually describe the moods, details, structures, styles, and/or proportions of the image. Remember, the focus is on visual attributes.
-- Craft your input by "showing" and not "telling" the imagery. Think in terms of what you'd want to see in a photograph or a painting.
-- %s, 
-- Here is an an example call for generating a realistic portrait photo of a man:
+1. Visually describe the moods, details, structures, styles, and/or proportions of the image. Remember, the focus is on visual attributes.
+2.  Craft your input by "showing" and not "telling" the imagery. Think in terms of what you'd want to see in a photograph or a painting.
+3. %s, 
+4. present user with generated image url in your final output
+5. Here is an example call for generating a realistic portrait photo of a man:
 	 {
 		"prompt": "photo of a man in black clothes, half body, high detailed skin, coastline, overcast weather, wind, waves, 8k uhd, dslr, soft lighting, high quality, film grain, Fujifilm XT3",
 		"negativePrompt": "semi-realistic, cgi, 3d, render, sketch, cartoon, drawing, anime, out of frame, low quality, ugly, mutation, deformed"
 	 }
-	`, t.structuredPrompt.GetFormatInstructionsWithPrompts(_structuredFormatInstructionTemplate))
+
+	`, t.structuredPrompt.GetFormatInstructions())
 }
 
 func (t Tool) Call(ctx context.Context, input string) (string, error) {
@@ -183,5 +184,5 @@ func (t Tool) Call(ctx context.Context, input string) (string, error) {
 		return "", err
 	}
 
-	return fmt.Sprintf("![generated image](/%s)", staticPath), nil
+	return fmt.Sprintf(" ![generated image](/%s)", staticPath), nil
 }
