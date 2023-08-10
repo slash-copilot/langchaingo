@@ -123,7 +123,7 @@ Guidelines:
 1. Visually describe the moods, details, structures, styles, and/or proportions of the image. Remember, the focus is on visual attributes.
 2.  Craft your input by "showing" and not "telling" the imagery. Think in terms of what you'd want to see in a photograph or a painting.
 3. %s, 
-4. present user with generated image url in your final output
+4. show user with orignal generated image url in the last line of your final output 
 5. Here is an example call for generating a realistic portrait photo of a man:
 	 {
 		"prompt": "photo of a man in black clothes, half body, high detailed skin, coastline, overcast weather, wind, waves, 8k uhd, dslr, soft lighting, high quality, film grain, Fujifilm XT3",
