@@ -45,7 +45,7 @@ func run() error {
 		return err
 	}
 
-	res1, err := chains.Run(context.Background(), executor, "Hi! I want to draw a picture of a dog.", chains.WithModel("gpt-4"))
+	res1, err := chains.Run(context.Background(), executor, "Hi! I want to draw a picture of a blue cat.", chains.WithModel("gpt-4"))
 
 	if err != nil {
 		return err
