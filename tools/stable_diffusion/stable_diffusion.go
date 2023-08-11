@@ -40,7 +40,7 @@ func DefaultCreateOptions() *createOptions {
 		Width:      512,
 		Height:     512,
 		OutputPath: "./images",
-		StaticPath: "static/images",
+		StaticPath: "/static/images",
 	}
 }
 
@@ -121,7 +121,6 @@ func (t Tool) Description() string {
 	You can generate images with 'stable-diffusion'. This tool is exclusively for visual content.
 Guidelines:
 1. Visually describe the moods, details, structures, styles, and/or proportions of the image. Remember, the focus is on visual attributes.
-2. This tool will return a url if the image is successfully generated. In your final answer you should describe this image first and quote the url with "Here is your generate image ![image](<url>)"
 2. Craft your input by "showing" and not "telling" the imagery. Think in terms of what you'd want to see in a photograph or a painting.
 3. %s,  
 4. Here is an example call for generating a realistic portrait photo of a man:
@@ -184,5 +183,5 @@ func (t Tool) Call(ctx context.Context, input string) (string, error) {
 		return "", err
 	}
 
-	return staticPath, nil
+	return fmt.Sprintf("![generated image](%s)", staticPath), nil
 }
