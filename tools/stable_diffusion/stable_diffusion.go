@@ -128,7 +128,6 @@ Guidelines:
 		"prompt": "photo of a man in black clothes, half body, high detailed skin, coastline, overcast weather, wind, waves, 8k uhd, dslr, soft lighting, high quality, film grain, Fujifilm XT3",
 		"negativePrompt": "semi-realistic, cgi, 3d, render, sketch, cartoon, drawing, anime, out of frame, low quality, ugly, mutation, deformed"
 	 }
-
 	`, t.structuredPrompt.GetFormatInstructions())
 }
 
