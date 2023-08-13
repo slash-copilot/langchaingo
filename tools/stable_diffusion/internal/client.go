@@ -9,8 +9,10 @@ import (
 )
 
 type SDWebUIClient struct {
-	Client *http.Client
-	ApiUrl string
+	Client        *http.Client
+	ApiUrl        string
+	BasicAuthUser string
+	BasicAuthPass string
 }
 
 func NewSDWebUIClient() *SDWebUIClient {
@@ -22,13 +24,22 @@ func NewSDWebUIClient() *SDWebUIClient {
 /*
 set the api endpoint url
 eg. http://127.0.0.1:7860
+eg. http://user:pass@localhost:7860
 */
 func (c *SDWebUIClient) SetAPIUrl(apiUrl string) error {
-	_, err := url.ParseRequestURI(apiUrl)
+	url, err := url.ParseRequestURI(apiUrl)
+
 	if err != nil { // the api url is wrong
 		return err
 	}
-	c.ApiUrl = apiUrl
+
+	c.ApiUrl = url.Scheme + "://" + url.Host
+
+	if url.User != nil {
+		c.BasicAuthUser = url.User.Username()
+		c.BasicAuthPass, _ = url.User.Password()
+	}
+
 	return nil
 }
 
@@ -52,7 +63,20 @@ func (c *SDWebUIClient) Text2ImgWithDefaultPrompt(prompt string) (string, error)
 	if err != nil {
 		return "", err
 	}
-	resp, err := c.Client.Post(c.ApiUrl+"/sdapi/v1/txt2img", "application/json", bytes.NewBuffer(b))
+	req, err := http.NewRequest("POST", c.ApiUrl+"/sdapi/v1/txt2img", bytes.NewBuffer(b))
+
+	if err != nil {
+		return "", err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	if c.BasicAuthUser != "" {
+		req.SetBasicAuth(c.BasicAuthUser, c.BasicAuthPass)
+	}
+
+	resp, err := c.Client.Do(req)
+
 	if err != nil {
 		return "", err
 	}
@@ -63,12 +87,26 @@ func (c *SDWebUIClient) Text2ImgWithDefaultPrompt(prompt string) (string, error)
 	return res.Images[0], err
 }
 
-func (c *SDWebUIClient) Text2ImgWithCustomPrompt(req *TXT2IMGReq) (string, error) {
-	b, err := json.Marshal(req)
+func (c *SDWebUIClient) Text2ImgWithCustomPrompt(txt2imgReq *TXT2IMGReq) (string, error) {
+	b, err := json.Marshal(txt2imgReq)
 	if err != nil {
 		return "", err
 	}
-	resp, err := c.Client.Post(c.ApiUrl+"/sdapi/v1/txt2img", "application/json", bytes.NewBuffer(b))
+
+	req, err := http.NewRequest("POST", c.ApiUrl+"/sdapi/v1/txt2img", bytes.NewBuffer(b))
+
+	if err != nil {
+		return "", err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	if c.BasicAuthUser != "" {
+		req.SetBasicAuth(c.BasicAuthUser, c.BasicAuthPass)
+	}
+
+	resp, err := c.Client.Do(req)
+
 	if err != nil {
 		return "", err
 	}
