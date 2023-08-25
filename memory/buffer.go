@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -31,16 +32,18 @@ func NewConversationBuffer(options ...ConversationBufferOption) *ConversationBuf
 }
 
 // MemoryVariables gets the input key the buffer memory class will load dynamically.
-func (m *ConversationBuffer) MemoryVariables() []string {
+func (m *ConversationBuffer) MemoryVariables(context.Context) []string {
 	return []string{m.MemoryKey}
 }
 
 // LoadMemoryVariables returns the previous chat messages stored in memory. Previous chat messages
 // are returned in a map with the key specified in the MemoryKey field. This key defaults to
-// "history". If ReturnMessages is set to true the output is a slice of schema.ChatMessage. Otherwise
+// "history". If ReturnMessages is set to true the output is a slice of schema.ChatMessage. Otherwise,
 // the output is a buffer string of the chat messages.
-func (m *ConversationBuffer) LoadMemoryVariables(map[string]any) (map[string]any, error) {
-	messages, err := m.ChatHistory.Messages()
+func (m *ConversationBuffer) LoadMemoryVariables(
+	ctx context.Context, _ map[string]any,
+) (map[string]any, error) {
+	messages, err := m.ChatHistory.Messages(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -68,12 +71,16 @@ func (m *ConversationBuffer) LoadMemoryVariables(map[string]any) (map[string]any
 // input key must be a key in the input values and the output key must be a key in the output
 // values. The values in the input and output values used to save a user and ai message must
 // be strings.
-func (m *ConversationBuffer) SaveContext(inputValues map[string]any, outputValues map[string]any) error {
+func (m *ConversationBuffer) SaveContext(
+	ctx context.Context,
+	inputValues map[string]any,
+	outputValues map[string]any,
+) error {
 	userInputValue, err := getInputValue(inputValues, m.InputKey)
 	if err != nil {
 		return err
 	}
-	err = m.ChatHistory.AddUserMessage(userInputValue)
+	err = m.ChatHistory.AddUserMessage(ctx, userInputValue)
 	if err != nil {
 		return err
 	}
@@ -82,7 +89,7 @@ func (m *ConversationBuffer) SaveContext(inputValues map[string]any, outputValue
 	if err != nil {
 		return err
 	}
-	err = m.ChatHistory.AddAIMessage(aiOutputValue)
+	err = m.ChatHistory.AddAIMessage(ctx, aiOutputValue)
 	if err != nil {
 		return err
 	}
@@ -91,11 +98,11 @@ func (m *ConversationBuffer) SaveContext(inputValues map[string]any, outputValue
 }
 
 // Clear sets the chat messages to a new and empty chat message history.
-func (m *ConversationBuffer) Clear() error {
-	return m.ChatHistory.Clear()
+func (m *ConversationBuffer) Clear(ctx context.Context) error {
+	return m.ChatHistory.Clear(ctx)
 }
 
-func (m *ConversationBuffer) GetMemoryKey() string {
+func (m *ConversationBuffer) GetMemoryKey(context.Context) string {
 	return m.MemoryKey
 }
 

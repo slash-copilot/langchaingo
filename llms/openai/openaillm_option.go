@@ -27,9 +27,12 @@ type options struct {
 	baseURL      string
 	organization string
 
-	apiType    APIType
-	apiVersion string // required when APIType is APITypeAzure or APITypeAzureAD
-	logger     logger.LLMLogger
+	apiType APIType
+
+	logger logger.LLMLogger
+	// required when APIType is APITypeAzure or APITypeAzureAD
+	apiVersion     string
+	embeddingModel string
 }
 
 type Option func(*options)
@@ -47,6 +50,13 @@ func WithToken(token string) Option {
 func WithModel(model string) Option {
 	return func(opts *options) {
 		opts.model = model
+	}
+}
+
+// WithEmbeddingModel passes the OpenAI model to the client. Required when ApiType is Azure.
+func WithEmbeddingModel(embeddingModel string) Option {
+	return func(opts *options) {
+		opts.embeddingModel = embeddingModel
 	}
 }
 

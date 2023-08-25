@@ -55,6 +55,7 @@ func (o *Chat) Call(ctx context.Context, messages []schema.ChatMessage, options 
 	return r[0].Message, nil
 }
 
+//nolint:funlen
 func (o *Chat) Generate(ctx context.Context, messageSets [][]schema.ChatMessage, options ...llms.CallOption) ([]*llms.Generation, error) { // nolint:lll,cyclop
 	opts := llms.CallOptions{MaxTokens: defaultMaxTokens}
 	for _, opt := range options {
@@ -102,6 +103,12 @@ func (o *Chat) Generate(ctx context.Context, messageSets [][]schema.ChatMessage,
 				msg.Role = openai.ChatMessageRoleSystem
 			case schema.ChatMessageTypeAI:
 				msg.Role = openai.ChatMessageRoleAssistant
+				if aiChatMsg, ok := m.(schema.AIChatMessage); ok && aiChatMsg.FunctionCall != nil {
+					msg.FunctionCall = &openai.FunctionCall{
+						Name:      aiChatMsg.FunctionCall.Name,
+						Arguments: aiChatMsg.FunctionCall.Arguments,
+					}
+				}
 			case schema.ChatMessageTypeHuman:
 				msg.Role = openai.ChatMessageRoleUser
 			case schema.ChatMessageTypeGeneric:
